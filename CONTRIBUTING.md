@@ -48,6 +48,8 @@ see the steps at the top of `scripts/demo.tape`.
 | `src/ui/` | Rendering ([ratatui](https://ratatui.rs)) |
 | `src/git.rs` | Repository details for a folder's panel |
 | `tests/fixtures/` | Synthetic agent files used by the tests |
+| `.claude/agents/` | Optional [Claude Code](https://claude.com/claude-code) sub-agents: reviewers for plans and branches, a check of the agents' file formats, a check of the interface |
+| `.claude/skills/release/` | The release steps, as a Claude Code skill (`/release`) |
 
 ### Guidelines
 
