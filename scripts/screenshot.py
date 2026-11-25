@@ -5,7 +5,7 @@ petsitter draws one frame of its demo (`--demo-frame`, made-up sessions)
 as ANSI text; this script lays it out in an HTML page (a macOS-style window
 over an abstract gradient) and has a headless Chrome take the picture.
 
-    python3 scripts/screenshot.py [--chrome PATH] [--size 150x52]
+    python3 scripts/screenshot.py [--chrome PATH] [--size 150x58]
 
 With `--wallpaper WxH PATH` it only paints the wallpaper, for the recording
 made by `scripts/demo.tape`.
@@ -238,7 +238,7 @@ def shoot(chrome, document, width, height, output, scale=2):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--chrome", help="path to Chrome or Chromium")
-    parser.add_argument("--size", default="150x52", help="terminal size, COLSxROWS")
+    parser.add_argument("--size", default="150x58", help="terminal size, COLSxROWS")
     parser.add_argument("--wallpaper", nargs=2, metavar=("WxH", "PATH"),
                         help="only paint the wallpaper, W by H pixels, to PATH")
     args = parser.parse_args()
