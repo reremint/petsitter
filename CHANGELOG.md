@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Man pages, generated from `--help`: `petsitter man ~/.local/share/man/man1`
+  installs them, then `man petsitter` works. They also ship in the release
+  archives.
+
 ## [0.1.0]
 
 First release.

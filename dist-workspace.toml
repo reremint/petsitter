@@ -13,6 +13,8 @@ installers = ["shell"]
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
 # Path that installers should place binaries in
 install-path = ["$XDG_BIN_HOME/", "$XDG_DATA_HOME/../bin", "~/.local/bin"]
+# Extra files shipped in the archives, next to the binary
+include = ["man/"]
 # Whether to install an updater program
 install-updater = false
 # Let Dependabot keep the actions of the generated release workflow up to date
