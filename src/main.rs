@@ -72,7 +72,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Manage optional agent hooks that report approval prompts.
+    /// Manage optional agent hooks for fresher Claude quotas and Codex approval prompts.
     Hooks {
         #[command(subcommand)]
         action: HooksAction,
