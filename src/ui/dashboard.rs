@@ -597,6 +597,9 @@ fn memory_rows(app: &App, width: usize) -> Vec<Vec<Span<'static>>> {
 
 /// Width of the activity trace at the end of a session line.
 const TRACE_WIDTH: usize = 24;
+/// Columns of a session's name kept before its age gives way on a short
+/// line of the tree.
+const NAME_FLOOR: usize = 8;
 /// Width of the context percentage after it (`100%`).
 const CONTEXT_WIDTH: usize = 4;
 /// Width of the tokens column at the end of session and sub-agent lines.
@@ -926,18 +929,6 @@ fn session_line(
         agent_glyph(app, session.agent),
         Span::raw(" "),
     ];
-    // Name, worktree branch, what it is doing, then how long ago: one run of
-    // text, the action shortened if needed so the age stays visible.
-    if status == Status::Working {
-        left.extend(super::shimmer(app, &session.name, selected));
-    } else {
-        left.push(Span::styled(session.name.clone(), name_style));
-    }
-    if let Some(branch) = session_branch(app, session) {
-        // Discreet: the branch is context, not the headline.
-        left.push(Span::styled(format!(" {branch}"), t.muted()));
-    }
-    left.push(Span::raw(" "));
 
     // End of the line: the activity trace (none once the session exited),
     // the share of the context window in use and the tokens used. CPU and
@@ -952,10 +943,48 @@ fn session_line(
     right.extend(context_spans(app, session, faded));
     right.push(tokens_span(app, session.tokens_used));
 
-    if status == Status::Exited {
-        // The resume id must stay whole to be copied: no age, and the
-        // gauges give way when the line runs short.
-        left.extend(action(app, session, status));
+    // Name, its tag and worktree branch, what it is doing, then how long ago:
+    // one run of text in what `justify` leaves of the line. The age is set
+    // aside first so it shows whole, unless that would leave less than a few
+    // letters of the name: then it gives way, whole. The name is shortened
+    // if needed, the tag shows whole or not at all, the branch only if a few
+    // letters of it fit, and the action takes what is left.
+    let width_of = |spans: &[Span<'_>]| spans.iter().map(|s| s.content.width()).sum::<usize>();
+    let prefix = width_of(&left);
+    let gauges = width_of(&right) + 1;
+    let name_floor = session.name.width().min(NAME_FLOOR);
+    let age = (status != Status::Exited)
+        .then(|| format!(" - {}", format::since(app.now, session.last_active)))
+        .filter(|age| prefix + name_floor + age.width() + gauges <= width);
+    // An exited session's resume id must stay whole to be copied: it is set
+    // aside instead of the age, and the gauges give way to it.
+    let resume = (status == Status::Exited).then(|| action(app, session, status));
+    let room = match &resume {
+        Some(resume) => width.saturating_sub(width_of(resume) + 2),
+        None => width.saturating_sub(gauges + age.as_ref().map_or(0, |age| age.width())),
+    };
+    let name = format::truncate(&session.name, room.saturating_sub(prefix));
+    if status == Status::Working {
+        left.extend(super::shimmer(app, &name, selected));
+    } else {
+        left.push(Span::styled(name, name_style));
+    }
+    if session.detached() && width_of(&left) + super::BG_TAG.len() <= room {
+        // Running in the background, with no terminal to jump to.
+        left.push(Span::styled(super::BG_TAG, t.muted()));
+    }
+    if let Some(branch) = session_branch(app, session) {
+        let branch = format!(" {branch}");
+        let free = room.saturating_sub(width_of(&left));
+        if branch.width() <= free || free >= 6 {
+            // Discreet: the branch is context, not the headline.
+            left.push(Span::styled(format::truncate(&branch, free), t.muted()));
+        }
+    }
+
+    if let Some(resume) = resume {
+        left.push(Span::raw(" "));
+        left.extend(resume);
         let needed: usize = left.iter().chain(&right).map(|s| s.content.width()).sum();
         if needed + 1 > width {
             right.clear();
@@ -967,19 +996,18 @@ fn session_line(
         return lines;
     }
 
-    let age = format!(" - {}", format::since(app.now, session.last_active));
-    let taken: usize = left
-        .iter()
-        .chain(&right)
-        .map(|s| s.content.width())
-        .sum::<usize>()
-        + age.width()
-        + 2;
-    left.extend(truncate_spans(
-        action(app, session, status),
-        width.saturating_sub(taken),
-    ));
-    left.push(Span::styled(age, t.muted()));
+    // The action, after a space, in what the age leaves.
+    let age_width = age.as_ref().map_or(0, |age| age.width());
+    let free = width.saturating_sub(width_of(&left) + gauges + age_width + 1);
+    let doing = truncate_spans(action(app, session, status), free);
+    // Not when nothing but its `…` would be left.
+    if width_of(&doing) > 1 {
+        left.push(Span::raw(" "));
+        left.extend(doing);
+    }
+    if let Some(age) = age {
+        left.push(Span::styled(age, t.muted()));
+    }
     let mut lines = vec![justify(left, right, width)];
 
     // Below: running sub-agents, right under their session.

@@ -95,7 +95,9 @@ pub(super) fn render_footer(app: &App, frame: &mut Frame<'_>, area: Rect) {
             ViewMode::Tree => ("←→", "fold"),
         });
     }
-    hints.push(("⏎", "jump"));
+    if !app.selected_session().is_some_and(Session::detached) {
+        hints.push(("⏎", "jump"));
+    }
     if width >= 70 {
         hints.push(("y", "resume"));
         if app

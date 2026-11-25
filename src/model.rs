@@ -184,6 +184,12 @@ impl Session {
         self.tasks.iter().filter(|t| t.monitor).count()
     }
 
+    /// Still running, in the background with no terminal attached: the
+    /// sessions tagged `[bg]`.
+    pub fn detached(&self) -> bool {
+        self.background && self.activity != Activity::Exited
+    }
+
     /// A session skeleton with every optional field left empty.
     pub fn new(agent: Agent, id: impl Into<String>, cwd: PathBuf, last_active: SystemTime) -> Self {
         let id = id.into();

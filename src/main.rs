@@ -335,40 +335,48 @@ fn print_once(settings: &Settings, idle_after: Duration) {
     let sessions = &snapshot.sessions;
     let view = View::build(sessions, &settings.root, now, idle_after);
     for index in view.order() {
-        let s = &sessions[index];
-        let place = match section(s, now, idle_after) {
-            Section::Active => "active",
-            Section::Inactive => "inactive",
-            Section::Exited => "exited",
-        };
-        let state = match &s.activity {
-            Activity::Working => "working".to_owned(),
-            Activity::Waiting { reason } => format!("waiting: {reason}"),
-            Activity::Idle => "idle".to_owned(),
-            Activity::Exited => "exited".to_owned(),
-        };
-        let tool = s
-            .current_tool
-            .as_ref()
-            .filter(|_| s.activity == Activity::Working)
-            .map(|t| format!("  [{} {}]", t.name, t.detail))
-            .unwrap_or_default();
-        let subagents = if s.subagents.is_empty() {
-            String::new()
-        } else {
-            format!("  (+{} sub-agents)", s.subagents.len())
-        };
-        // Names, prompts and commands come from agents' files: no control
-        // characters reach the terminal.
-        let line = format!(
-            "{place:<9} {:<20} {:<9} {:<24} {:<10} {state}{tool}{subagents}",
-            repo_of(&settings.root, &s.cwd).0,
-            s.agent.label(),
-            s.name,
-            model::short_id(&s.id),
+        println!(
+            "{}",
+            once_line(&sessions[index], &settings.root, now, idle_after)
         );
-        println!("{}", line.replace(char::is_control, " "));
     }
+}
+
+/// One session's line of `--once`.
+fn once_line(s: &model::Session, root: &Path, now: SystemTime, idle_after: Duration) -> String {
+    let place = match section(s, now, idle_after) {
+        Section::Active => "active",
+        Section::Inactive => "inactive",
+        Section::Exited => "exited",
+    };
+    let state = match &s.activity {
+        Activity::Working => "working".to_owned(),
+        Activity::Waiting { reason } => format!("waiting: {reason}"),
+        Activity::Idle => "idle".to_owned(),
+        Activity::Exited => "exited".to_owned(),
+    };
+    let tool = s
+        .current_tool
+        .as_ref()
+        .filter(|_| s.activity == Activity::Working)
+        .map(|t| format!("  [{} {}]", t.name, t.detail))
+        .unwrap_or_default();
+    let detached = if s.detached() { "  [bg]" } else { "" };
+    let subagents = if s.subagents.is_empty() {
+        String::new()
+    } else {
+        format!("  (+{} sub-agents)", s.subagents.len())
+    };
+    // Names, prompts and commands come from agents' files: no control
+    // characters reach the terminal.
+    let line = format!(
+        "{place:<9} {:<20} {:<9} {:<24} {:<10} {state}{detached}{tool}{subagents}",
+        repo_of(root, &s.cwd).0,
+        s.agent.label(),
+        s.name,
+        model::short_id(&s.id),
+    );
+    line.replace(char::is_control, " ")
 }
 
 /// Parses a terminal size such as `140x46`.
@@ -403,6 +411,24 @@ fn parse_duration(value: &str) -> Result<Duration, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn once_marks_sessions_without_a_terminal() {
+        let now = SystemTime::now();
+        let idle = Duration::from_secs(600);
+        let mut session =
+            model::Session::new(model::Agent::OpenCode, "s1", PathBuf::from("/lab/app"), now);
+        session.activity = Activity::Working;
+        let root = Path::new("/lab");
+        assert!(!once_line(&session, root, now, idle).contains("[bg]"));
+        session.background = true;
+        assert!(once_line(&session, root, now, idle).ends_with("working  [bg]"));
+        session.activity = Activity::Exited;
+        assert!(
+            !once_line(&session, root, now, idle).contains("[bg]"),
+            "exited"
+        );
+    }
 
     #[test]
     fn parses_durations() {

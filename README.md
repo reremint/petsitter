@@ -36,7 +36,8 @@ petsitter
 - **Every session, live**, in a tree of the folders they run in. Sessions in a
   git worktree sit under their repository.
 - **Its state at a glance**: ⚑ blocked on you (a permission prompt or a
-  question), working, ✓ your turn, ○ quiet. Blocked ones come first.
+  question), working, ✓ your turn, ○ quiet, `[bg]` when it runs in the
+  background with no terminal to jump to. Blocked ones come first.
 - **What it is doing**: model and effort, background shells, sub-agents,
   context used, tokens spent, and its activity over the last ten minutes.
 - **Your quotas**: the 5-hour, weekly and per-model limits of each account,

@@ -284,6 +284,10 @@ fn agent_item(
 fn dock_facts(app: &App, session: &Session, width: usize) -> Vec<Line<'static>> {
     let t = app.theme;
     let mut usage = Vec::new();
+    // First, so a narrow panel cuts the numbers, not this.
+    if session.detached() {
+        usage.push("no terminal attached".to_owned());
+    }
     if let Some(percent) = session.context_percent() {
         let window = session
             .context_window
