@@ -52,7 +52,7 @@ petsitter
 | --- | --- |
 | `↑` `↓` | Select |
 | `→` `←` | Open / close a folder |
-| `⏎` | Jump to the session's terminal pane (in the Rex terminal) |
+| `⏎` | Jump to the session's terminal pane (in [Rex](https://www.superlogical.com/) for now) |
 | `y` | Copy the command that resumes the session |
 | `h` | Show / hide exited sessions |
 | `d` | Show / hide the details |
@@ -66,9 +66,13 @@ see what it changed.
 
 - **Local.** petsitter reads the files your agents keep on disk and the
   process table, and sends nothing anywhere: its only network requests go to
-  opencode's own service on `127.0.0.1`. It changes nothing either, unless you
-  delete an exited session (Claude Code transcripts go to the trash; Codex and
-  opencode delete through their own commands).
+  opencode's own service on this machine. It keeps its own state in
+  `$XDG_STATE_HOME/petsitter` (`~/.local/state/petsitter` by default), and
+  writes nothing else unless you ask: `petsitter man DIR` writes there,
+  deleting an exited session sends Claude Code transcripts to the trash (Codex
+  and opencode delete through their own commands), and the optional hooks
+  below change Claude Code's `settings.json` or Codex's `hooks.json`, backing
+  the file up when installing.
 - **Fits your terminal's theme**, light or dark, and honors `NO_COLOR`.
 - **Options**: `petsitter --help`. A different folder: `petsitter ~/work`.
 - **Man pages**: `petsitter man ~/.local/share/man/man1` installs them, then
@@ -106,4 +110,5 @@ Bug reports and pull requests are welcome: see
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The release archives also carry `THIRD-PARTY-LICENSES`, the
+licenses of the crates built into the binary.

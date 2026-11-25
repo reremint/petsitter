@@ -72,6 +72,17 @@ it, and keep its link at the bottom as it is.
      (or `.../releases/tag/vX.Y.Z` for the first release).
 3. Regenerate the man pages, which carry the version:
    `rm -rf man && cargo run -- man man`.
+4. Regenerate `THIRD-PARTY-LICENSES`, the notices of the crates built into
+   the archives (`cargo fetch` first gets the Linux-only crates on macOS;
+   generation itself runs offline):
+
+   ```sh
+   cargo fetch --locked
+   cargo about generate --frozen --fail about.hbs -o THIRD-PARTY-LICENSES
+   ```
+
+   `cargo-about` installs with
+   `cargo install cargo-about --locked --features cli --version 0.9.3`.
 
 ## 4. Check everything
 
@@ -82,14 +93,25 @@ cargo test --locked
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --locked
 cargo package --locked --allow-dirty  # builds the crate as crates.io would
 dist generate --check     # release.yml matches dist-workspace.toml
-dist plan                 # every archive lists man/ next to the binary
+dist plan                 # every archive lists man/ and THIRD-PARTY-LICENSES
+test -s THIRD-PARTY-LICENSES
+git diff --stat THIRD-PARTY-LICENSES  # what changed in the dependencies
+grep -c '<copyright holders>' THIRD-PARTY-LICENSES  # must print 1
+grep -nE '/Users/|/home/|/private/|\.cargo/registry|&quot;|&lt;' THIRD-PARTY-LICENSES  # must print nothing
 ```
+
+`dist plan` only repeats the configuration: it lists `THIRD-PARTY-LICENSES`
+even when the file is missing, hence `test -s`. The one
+`<copyright holders>` placeholder is the objc2 section's, which ship no
+copyright notice (see the file's header); the last grep catches local paths
+and HTML escaping.
 
 `--allow-dirty` is needed because nothing is committed yet; step 6 runs
 `cargo publish --dry-run` on the merged commit before tagging it.
 
 `dist` is cargo-dist, at the version in `dist-workspace.toml`
 (`cargo-dist-version`); install it from its GitHub releases if missing.
+`cargo-about` is needed too (step 3).
 The release notes come from the `## [X.Y.Z]` section of `CHANGELOG.md`:
 keep that heading in exactly this form.
 
@@ -133,7 +155,8 @@ and list again.
   and Linux, arm64 and x86_64) with their `.sha256`, and
   `petsitter-installer.sh`.
 - Download one archive into a scratch directory and check it holds the
-  binary, `README.md`, `CHANGELOG.md`, `LICENSE` and `man/`.
+  binary, `README.md`, `CHANGELOG.md`, `LICENSE`, `THIRD-PARTY-LICENSES`
+  and `man/`.
 - Run the installer into a scratch directory, which also leaves `PATH` and
   the shell profiles alone:
   `PETSITTER_UNMANAGED_INSTALL=<scratch>/bin sh petsitter-installer.sh`.

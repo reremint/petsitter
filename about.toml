@@ -1,0 +1,15 @@
+# cargo-about settings for THIRD-PARTY-LICENSES, the notices of the crates
+# built into petsitter's release archives. The `/release` skill regenerates it.
+
+# Licenses accepted, in order of preference when a crate offers a choice.
+accepted = ["MIT", "Apache-2.0", "ISC", "Zlib", "BSL-1.0", "MPL-2.0", "Unicode-3.0", "CC0-1.0"]
+# The targets cargo-dist builds (dist-workspace.toml).
+targets = [
+  "aarch64-apple-darwin",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+]
+# Only what ends up in the binary.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true

@@ -31,8 +31,12 @@ show in the code.
    comes from disk or from other processes (`unwrap`, indexing, slicing on
    non-char boundaries), integer overflow, races between threads.
 2. **petsitter's rules** (from `CONTRIBUTING.md`):
-   - It never writes to an agent's files and sends nothing off the machine
-     (its only network requests go to opencode's service on `127.0.0.1`).
+   - It writes its own state folder, and elsewhere only where the user points
+     it (`petsitter man DIR`); it changes an agent's files only on an
+     explicit request (deleting an exited session, `hooks install` /
+     `uninstall`). It sends nothing off the machine: its only network
+     requests go to opencode's service on `127.0.0.1`, `localhost` or
+     `[::1]`.
    - Slow work (reading big files, running `git`) never runs on the UI thread.
    - Text from agents' files never reaches the terminal with control
      characters in it.
