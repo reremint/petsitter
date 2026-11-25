@@ -21,7 +21,7 @@ cargo run --quiet -- --demo-frame 120x40 | sed $'s/\x1b\\[[0-9;]*m//g'
 ```
 
 Render at least these sizes: 80x24 (the classic minimum), 60x20 (a narrow
-split pane), 100x30, 150x52 (the README screenshot), 220x60 (a wide screen),
+split pane), 100x30, 150x58 (the README screenshot), 220x60 (a wide screen),
 and a very short one such as 120x12. Keep the ANSI version too, to check
 styles: which text is bold, dim or reversed, and which colors carry meaning.
 
