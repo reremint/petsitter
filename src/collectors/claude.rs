@@ -23,6 +23,7 @@ use crate::model::{
     Activity, Agent, BackgroundTask, Limit, Session, SubAgent, ToolCall, Usage, push_recent,
     short_id,
 };
+use crate::procs::ProcInfo;
 use crate::tail::{self, JsonlTail};
 
 /// Contents of `sessions/<pid>.json`. Unknown fields are ignored.
@@ -217,13 +218,14 @@ impl ClaudeCollector {
         if !ctx.in_scope(&file.cwd) {
             return None;
         }
-        let proc = ctx.procs.get(file.pid)?;
-        let started = file.started_at.map(from_millis);
-        if started.is_some_and(|s| !pid_matches(proc.start_time, s))
-            || !proc.cmd.iter().any(|a| a.contains("claude"))
+        if !ctx
+            .procs
+            .get(file.pid)
+            .is_some_and(|proc| runs(&file, proc))
         {
             return None;
         }
+        let started = file.started_at.map(from_millis);
 
         let status_time = file.status_updated_at.map_or(ctx.now, from_millis);
         let mut session = Session::new(
@@ -234,16 +236,10 @@ impl ClaudeCollector {
         );
         session.pid = Some(file.pid);
         session.started_at = started;
-        session.background = file.kind.as_deref() == Some("bg");
+        let pane = pane_pid(&file, viewers);
+        session.background = file.kind.as_deref() == Some("bg") && pane.is_none();
+        session.rex = pane.and_then(|pid| ctx.procs.rex_target(pid));
         let job_tasks = self.job_tasks(&file.session_id);
-        // A background job's process holds the pane it was started from, not
-        // the one showing it: that is its viewer's, if one is open.
-        session.rex = match &file.job_id {
-            Some(job) => viewers
-                .get(job)
-                .and_then(|&viewer| ctx.procs.rex_target(viewer)),
-            None => ctx.procs.rex_target(file.pid),
-        };
         session.activity = match file.status.as_deref() {
             Some("busy") => Activity::Working,
             Some("waiting") => Activity::Waiting {
@@ -356,7 +352,7 @@ impl Collector for ClaudeCollector {
         // became them, when it is still open.
         let viewers: HashMap<String, u32> = files
             .iter()
-            .filter(|f| ctx.procs.get(f.pid).is_some())
+            .filter(|f| ctx.procs.get(f.pid).is_some_and(|proc| runs(f, proc)))
             .filter_map(|f| Some((f.parked_job_id.clone()?, f.pid)))
             .collect();
         let mut sessions: Vec<Session> = files
@@ -1160,6 +1156,24 @@ fn nest(agents: Vec<Nestable>) -> Vec<SubAgent> {
         .collect()
 }
 
+/// Whether `proc` is the Claude Code process that wrote `file`, and not an
+/// unrelated one that reused its pid.
+fn runs(file: &LiveFile, proc: &ProcInfo) -> bool {
+    file.started_at
+        .is_none_or(|at| pid_matches(proc.start_time, from_millis(at)))
+        && proc.cmd.iter().any(|a| a.contains("claude"))
+}
+
+/// The process whose terminal pane shows the session: its own for a
+/// terminal session. A background job's process holds the pane it was
+/// started from, not one showing it: that is its viewer's, if one is open.
+fn pane_pid(file: &LiveFile, viewers: &HashMap<String, u32>) -> Option<u32> {
+    if file.job_id.is_none() && file.kind.as_deref() != Some("bg") {
+        return Some(file.pid);
+    }
+    viewers.get(file.job_id.as_deref()?).copied()
+}
+
 fn content_blocks(message: &Value) -> impl Iterator<Item = &Value> {
     message
         .get("content")
@@ -1548,5 +1562,62 @@ mod tests {
         );
         assert!(summary.model.is_none());
         assert_eq!(summary.pending.len(), 0);
+    }
+
+    /// A session file of pid 100, with `extra` fields.
+    fn live_file(extra: serde_json::Value) -> LiveFile {
+        let serde_json::Value::Object(extra) = extra else {
+            panic!("fields must be an object");
+        };
+        let mut fields = serde_json::json!({"pid": 100, "sessionId": "s1", "cwd": "/lab/app"});
+        fields.as_object_mut().unwrap().extend(extra);
+        serde_json::from_value(fields).unwrap()
+    }
+
+    #[test]
+    fn a_session_runs_in_the_process_that_started_it() {
+        let file = live_file(serde_json::json!({"startedAt": 1_000_000}));
+        let proc = |start_time, program: &str| ProcInfo {
+            pid: 100,
+            parent: None,
+            start_time,
+            cmd: vec![program.to_owned()],
+            cwd: None,
+            rex: None,
+            cpu: 0.0,
+            memory: 0,
+        };
+        assert!(runs(&file, &proc(999, "claude")));
+        assert!(
+            !runs(&file, &proc(1_000 + 61, "claude")),
+            "started after the session: its pid was reused"
+        );
+        assert!(!runs(&file, &proc(999, "zsh")), "not Claude Code");
+        assert!(
+            runs(&live_file(serde_json::json!({})), &proc(u64::MAX, "claude")),
+            "no start time to check"
+        );
+    }
+
+    #[test]
+    fn a_background_job_shows_in_its_viewer_pane_only() {
+        let viewers = HashMap::from([("job1".to_owned(), 200)]);
+        let pane = |json| pane_pid(&live_file(json), &viewers);
+        assert_eq!(pane(serde_json::json!({})), Some(100), "terminal session");
+        assert_eq!(
+            pane(serde_json::json!({"kind": "bg", "jobId": "job1"})),
+            Some(200),
+            "job shown by a terminal"
+        );
+        assert_eq!(
+            pane(serde_json::json!({"kind": "bg", "jobId": "job2"})),
+            None
+        );
+        assert_eq!(pane(serde_json::json!({"kind": "bg"})), None, "no job id");
+        assert_eq!(
+            pane(serde_json::json!({"kind": "interactive", "jobId": "job1"})),
+            Some(200),
+            "a job, whatever its kind"
+        );
     }
 }
