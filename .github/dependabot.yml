@@ -11,3 +11,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # The CI pins the minimum supported Rust version on purpose.
+      - dependency-name: dtolnay/rust-toolchain
