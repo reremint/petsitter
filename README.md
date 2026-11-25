@@ -14,7 +14,7 @@ asleep, and what each one is up to.
 </div>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="petsitter watching five agent sessions in three projects: one blocked on a permission prompt, two working with background shells and a sub-agent, one waiting for its next prompt, one quiet" width="100%">
+  <img src="docs/screenshot.png" alt="petsitter watching five agent sessions in three projects: one blocked on a permission prompt, two working with background shells and a sub-agent that started one of its own, one waiting for its next prompt, one quiet" width="100%">
 </p>
 
 ## Install

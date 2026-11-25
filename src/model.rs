@@ -167,6 +167,10 @@ pub struct SubAgent {
     pub model: Option<String>,
     pub effort: Option<String>,
     pub last_active: SystemTime,
+    /// How deep it is nested: 0 when the session started it (or the one that
+    /// did is not listed), 1 when the sub-agent listed above it at level 0
+    /// did, and so on. Sub-agents are listed parent first.
+    pub level: usize,
 }
 
 impl Session {
