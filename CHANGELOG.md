@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format follows
 - Man pages, generated from `--help`: `petsitter man ~/.local/share/man/man1`
   installs them, then `man petsitter` works. They also ship in the release
   archives.
+- A `[bg]` tag on sessions that run in the background with no terminal, in
+  both views and in `--once` (the details panel says "no terminal
+  attached"); Enter on one now says so instead of "no Rex pane known".
 
 ### Fixed
 

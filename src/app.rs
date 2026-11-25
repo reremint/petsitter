@@ -648,6 +648,9 @@ impl App {
             (Activity::Exited, _) => {
                 Err("session exited — press y to copy its resume command".to_owned())
             }
+            (_, None) if session.detached() => {
+                Err("runs in the background, with no terminal to focus".to_owned())
+            }
             (_, None) => Err("no Rex pane known for this session".to_owned()),
             (_, Some(target)) => actions::focus_rex(target).map_err(|e| e.to_string()),
         };
@@ -705,5 +708,51 @@ impl App {
 
     fn notify(&mut self, message: String) {
         self.message = Some((message, Instant::now()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Agent;
+
+    /// What Enter says on `session`, the only one in the list.
+    fn enter_message(session: &Session) -> Option<String> {
+        let mut app = App::new(
+            PathBuf::from("/lab"),
+            Duration::from_secs(600),
+            Theme::plain(),
+            ViewMode::Flat,
+        );
+        app.show_exited = true;
+        app.load_snapshot(Snapshot {
+            sessions: vec![session.clone()],
+            ..Snapshot::default()
+        });
+        app.selected = Some(view::key(session));
+        assert_eq!(app.selected_session().map(|s| &s.id), Some(&session.id));
+        app.focus_selected();
+        app.message.map(|(message, _)| message)
+    }
+
+    #[test]
+    fn enter_explains_a_session_without_a_terminal() {
+        let mut session = Session::new(
+            Agent::Claude,
+            "s1",
+            PathBuf::from("/lab/app"),
+            SystemTime::now(),
+        );
+        session.background = true;
+        assert_eq!(
+            enter_message(&session).as_deref(),
+            Some("runs in the background, with no terminal to focus")
+        );
+
+        session.activity = Activity::Exited;
+        assert_eq!(
+            enter_message(&session).as_deref(),
+            Some("session exited — press y to copy its resume command")
+        );
     }
 }

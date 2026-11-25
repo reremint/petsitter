@@ -11,7 +11,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthStr as _;
 
-use super::{agent_glyph, format, gauge, justify, render_empty, status_icon, widgets};
+use super::{BG_TAG, agent_glyph, format, gauge, justify, render_empty, status_icon, widgets};
 use crate::app::App;
 use crate::model::Usage;
 use crate::model::{Activity, Session};
@@ -106,12 +106,13 @@ fn list_lines(
     let sessions = &app.snapshot.sessions;
     let selected = app.selected_session().map(view::key);
     let order = app.order();
+    // Names up to 22 columns, plus the tag of detached sessions.
     let name = order
         .iter()
-        .map(|&i| sessions[i].name.width())
+        .map(|&i| sessions[i].name.width().min(22) + tag_width(&sessions[i]))
         .max()
         .unwrap_or(0)
-        .clamp(8, 22)
+        .max(8)
         .min(width / 3);
     let rows = Rows {
         width,
@@ -184,6 +185,14 @@ fn list_lines(
     (lines, selected_line, positions)
 }
 
+/// Name columns a detached session keeps before its tag is left out.
+const TAGGED_NAME_MIN: usize = 8;
+
+/// Columns the `[bg]` tag takes after a session's name.
+fn tag_width(session: &Session) -> usize {
+    if session.detached() { BG_TAG.len() } else { 0 }
+}
+
 /// One session, one line: state, agent, name, what it is doing, heartbeat, age.
 fn row(app: &App, session: &Session, selected: bool, place: Place, rows: &Rows) -> Line<'static> {
     let t = app.theme;
@@ -209,11 +218,25 @@ fn row(app: &App, session: &Session, selected: bool, place: Place, rows: &Rows) 
         agent_glyph(app, session.agent),
         Span::raw(" "),
     ];
-    let name = format::fit(&session.name, rows.name);
+    // A detached session's tag sits right after its name, inside the name
+    // column, unless the column is too narrow to keep enough of the name.
+    let tag = session.detached()
+        && (rows.name >= TAGGED_NAME_MIN + BG_TAG.len()
+            || session.name.width() + BG_TAG.len() <= rows.name);
+    let name = if tag {
+        format::truncate(&session.name, rows.name - BG_TAG.len())
+    } else {
+        format::fit(&session.name, rows.name)
+    };
+    let pad = rows.name.saturating_sub(name.width() + BG_TAG.len());
     if session.activity == Activity::Working && !history {
         left.extend(super::shimmer(app, &name, selected));
     } else {
         left.push(Span::styled(name, name_style));
+    }
+    if tag {
+        left.push(Span::styled(BG_TAG, t.muted()));
+        left.push(Span::raw(" ".repeat(pad)));
     }
     left.push(Span::raw("  "));
     if place == Place::Pinned {

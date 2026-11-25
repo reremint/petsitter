@@ -107,6 +107,10 @@ pub(super) fn subagent_model(
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
+/// The tag after the name of a session that runs in the background with no
+/// terminal. Brackets keep it apart from the name even without colors.
+pub(super) const BG_TAG: &str = " [bg]";
+
 /// A one-cell status symbol in the indicator's width, against its right
 /// edge so every mark sits one space from the provider's glyph.
 pub(super) fn mark(symbol: &str, style: ratatui::style::Style) -> Span<'static> {
@@ -424,6 +428,141 @@ mod tests {
         let details = column("● Explore");
         assert_eq!(column("└ ● fork"), details);
         assert_eq!(column("└ ● claude"), details + 2);
+    }
+
+    /// A session in the background with no terminal is tagged `[bg]` in both
+    /// layouts, whole or not at all (in the tree the age comes first, after
+    /// a few letters of the name), and its details say so even while it runs
+    /// a long command; Enter is not offered for it. Under 70 columns only the
+    /// "never cut" checks apply: the tree's session rows are then mostly
+    /// their trace.
+    #[test]
+    fn tags_sessions_without_a_terminal() {
+        use std::path::PathBuf;
+        use std::time::{Duration, SystemTime};
+
+        use crate::app::{App, ViewMode};
+        use crate::model::{Activity, Agent, Session, ToolCall};
+
+        let now = SystemTime::now();
+        let mut detached = Session::new(Agent::OpenCode, "s2", PathBuf::from("/lab/app"), now);
+        detached.name = "refactor-lexer".into();
+        detached.background = true;
+        detached.activity = Activity::Working;
+        // An age long enough to be cut in the middle if it got no room.
+        detached.last_active = now - Duration::from_mins(48);
+        detached.current_tool = Some(ToolCall {
+            name: "Bash".into(),
+            detail: "cargo test --workspace --all-features -- --nocapture --test-threads 1".into(),
+            started_at: Some(now),
+        });
+        let mut snapshot = sample_snapshot();
+        snapshot.sessions.push(detached);
+
+        for mode in [ViewMode::Tree, ViewMode::Flat] {
+            for (width, height) in [(180, 60), (70, 40), (60, 40), (40, 40)] {
+                let mut app = App::new(
+                    PathBuf::from("/lab"),
+                    // Quiet after an hour: the session still works at 48m.
+                    Duration::from_hours(1),
+                    Theme::plain(),
+                    mode,
+                );
+                app.load_snapshot(snapshot.clone());
+                let attached = crate::view::key(&snapshot.sessions[0]);
+                app.cursor = Some(crate::tree::RowKey::Session(attached.clone()));
+                app.selected = Some(attached);
+                assert!(draw(&app, width, height).contains("jump"), "Enter offered");
+
+                let key = crate::view::key(&snapshot.sessions[1]);
+                app.cursor = Some(crate::tree::RowKey::Session(key.clone()));
+                app.selected = Some(key);
+                assert_eq!(
+                    app.selected_session().map(|s| s.name.as_str()),
+                    Some("refactor-lexer")
+                );
+                let screen = draw(&app, width, height);
+                println!("--- {mode:?} {width}x{height}\n{screen}");
+                assert!(!screen.contains("[b…"), "tag cut");
+                assert!(!screen.contains("jump"), "no terminal to jump to");
+                if mode == ViewMode::Tree && width >= 60 {
+                    // On a short line the tag gives way to the age, and the
+                    // age to the first letters of the name; never cut.
+                    let row = screen.lines().find(|l| l.contains("❯ │")).unwrap();
+                    assert!(row.contains("refactor"), "name kept: {row}");
+                    assert!(
+                        row.contains(" - 48m") || !row.contains(" - "),
+                        "age cut: {row}"
+                    );
+                    assert!(!row.contains("  - "), "double space: {row}");
+                    if width >= 70 {
+                        assert!(row.contains(" - 48m"), "age kept: {row}");
+                    }
+                }
+                if width < 70 {
+                    continue;
+                }
+                assert!(screen.contains("no terminal attached"), "in the details");
+                assert!(!screen.contains("fix-parser [bg]"), "only detached ones");
+                if mode == ViewMode::Tree {
+                    if width >= 100 {
+                        assert!(screen.contains("refactor-lexer [bg]"), "detached tagged");
+                    }
+                } else {
+                    assert!(screen.contains("refactor-lexer [bg]"), "detached tagged");
+                    // The tag stays inside the name column.
+                    let column = |name: &str| {
+                        let row = screen.lines().find(|l| l.contains(name)).unwrap();
+                        row[..row.find("Bash").unwrap()].width()
+                    };
+                    assert_eq!(column("fix-parser"), column("refactor-lexer"));
+                }
+            }
+        }
+    }
+
+    /// An exited session's resume id stays whole on a short line: its name
+    /// and branch give way first.
+    #[test]
+    fn keeps_the_resume_id_whole() {
+        use std::path::PathBuf;
+        use std::time::{Duration, SystemTime};
+
+        use crate::app::{App, ViewMode};
+        use crate::model::{Activity, Agent, Session};
+
+        let id = "c0ffee00-1234-4abc-8def-0123456789ab";
+        let mut session = Session::new(
+            Agent::Claude,
+            id,
+            PathBuf::from("/lab/app"),
+            SystemTime::now(),
+        );
+        session.name = "migrate-database-schema".into();
+        session.git_branch = Some("chore/db-migration-v2".into());
+        session.activity = Activity::Exited;
+        for width in [80, 70] {
+            let mut app = App::new(
+                PathBuf::from("/lab"),
+                Duration::from_secs(600),
+                Theme::plain(),
+                ViewMode::Tree,
+            );
+            app.hide_exited = false;
+            // Its folder opened, as with → on the "hidden" line.
+            app.folds.insert(PathBuf::from("/lab/app"), true);
+            app.load_snapshot(crate::monitor::Snapshot {
+                sessions: vec![session.clone()],
+                ..crate::monitor::Snapshot::default()
+            });
+            let screen = draw(&app, width, 30);
+            println!("--- {width}\n{screen}");
+            let row = screen.lines().find(|l| l.contains("migrate")).unwrap();
+            assert!(
+                row.contains(&format!("--resume {id}")),
+                "resume id cut: {row}"
+            );
+        }
     }
 
     #[test]
