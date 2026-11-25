@@ -70,6 +70,8 @@ see what it changed.
   opencode delete through their own commands).
 - **Fits your terminal's theme**, light or dark, and honors `NO_COLOR`.
 - **Options**: `petsitter --help`. A different folder: `petsitter ~/work`.
+- **Man pages**: `petsitter man ~/.local/share/man/man1` installs them, then
+  `man petsitter` works (with `cargo install`: `~/.cargo/share/man/man1`).
 
 <details>
 <summary><b>Optional: fresher Claude quotas, and Codex approval prompts</b></summary>
