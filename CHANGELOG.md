@@ -12,6 +12,11 @@ All notable changes to this project are documented here. The format follows
   installs them, then `man petsitter` works. They also ship in the release
   archives.
 
+### Fixed
+
+- Sub-agents started by another sub-agent are now nested under it, as in
+  Claude Code's background view.
+
 ## [0.1.0]
 
 First release.

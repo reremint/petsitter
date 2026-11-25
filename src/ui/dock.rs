@@ -12,7 +12,7 @@ use unicode_width::UnicodeWidthStr as _;
 use super::{State, agent_glyph, format, justify};
 use crate::app::App;
 use crate::git::Overview;
-use crate::model::{Activity, BackgroundTask, Session};
+use crate::model::{Activity, BackgroundTask, Session, SubAgent};
 use crate::view::{self, Section};
 
 /// Earlier commands listed under what the session does now.
@@ -183,8 +183,11 @@ fn background_lines(app: &App, session: &Session, width: usize) -> Vec<Line<'sta
             ]),
         ]
     };
-    let item = |text: Vec<Span<'static>>, right: Vec<String>| {
-        let mut left = vec![Span::raw(INDENT), Span::styled("● ", t.muted())];
+    // `lead` goes between the indentation and the bullet.
+    let item = |lead: Vec<Span<'static>>, text: Vec<Span<'static>>, right: Vec<String>| {
+        let mut left = vec![Span::raw(INDENT)];
+        left.extend(lead);
+        left.push(Span::styled("● ", t.muted()));
         left.extend(text);
         justify(
             left,
@@ -221,6 +224,7 @@ fn background_lines(app: &App, session: &Session, width: usize) -> Vec<Line<'sta
         lines.extend(heading(title, tasks.len()));
         for task in tasks {
             lines.push(item(
+                Vec::new(),
                 vec![Span::raw(task.command.clone())],
                 task_facts(task),
             ));
@@ -229,30 +233,50 @@ fn background_lines(app: &App, session: &Session, width: usize) -> Vec<Line<'sta
     if !agents.is_empty() {
         lines.extend(heading("Agents", agents.len()));
         for agent in agents {
-            let mut text = vec![Span::styled(
-                agent.kind.clone().unwrap_or_else(|| "agent".to_owned()),
-                t.agent(session.agent),
-            )];
-            if let Some(model) = super::subagent_model(session, agent) {
-                text.push(Span::styled(format!(" ({model})"), t.muted()));
-            }
-            text.push(Span::styled(" - ", t.muted()));
-            text.push(Span::raw(
-                agent
-                    .activity
-                    .as_ref()
-                    .unwrap_or(&agent.description)
-                    .clone(),
-            ));
-            let mut right = vec!["running".to_owned()];
-            if let Some(tokens) = agent.tokens_used {
-                right.push(format::tokens(tokens));
-            }
-            right.push(format::since(app.now, agent.last_active));
-            lines.push(item(text, right));
+            let (lead, text, right) = agent_item(app, session, agent);
+            lines.push(item(lead, text, right));
         }
     }
     lines
+}
+
+/// A sub-agent's line in the background view, in parts: the lead that
+/// places it under the sub-agent that started it (`└ ● fork`), its type,
+/// model and latest step, and the facts flush right.
+fn agent_item(
+    app: &App,
+    session: &Session,
+    agent: &SubAgent,
+) -> (Vec<Span<'static>>, Vec<Span<'static>>, Vec<String>) {
+    let t = app.theme;
+    let lead = match agent.level {
+        0 => Vec::new(),
+        level => vec![
+            Span::raw("  ".repeat(level - 1)),
+            Span::styled("└ ", t.muted()),
+        ],
+    };
+    let mut text = vec![Span::styled(
+        agent.kind.clone().unwrap_or_else(|| "agent".to_owned()),
+        t.agent(session.agent),
+    )];
+    if let Some(model) = super::subagent_model(session, agent) {
+        text.push(Span::styled(format!(" ({model})"), t.muted()));
+    }
+    text.push(Span::styled(" - ", t.muted()));
+    text.push(Span::raw(
+        agent
+            .activity
+            .as_ref()
+            .unwrap_or(&agent.description)
+            .clone(),
+    ));
+    let mut right = vec!["running".to_owned()];
+    if let Some(tokens) = agent.tokens_used {
+        right.push(format::tokens(tokens));
+    }
+    right.push(format::since(app.now, agent.last_active));
+    (lead, text, right)
 }
 
 /// Facts about the session: its usage, then where it runs and how to

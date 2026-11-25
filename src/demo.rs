@@ -260,16 +260,31 @@ pub fn snapshot(now: SystemTime) -> Snapshot {
         started_at: Some(ago(2 * 3600)),
         cpu: Some(2.0),
     }];
-    notes.subagents = vec![SubAgent {
-        description: "Collect the merged pull requests".into(),
-        kind: Some("Explore".into()),
-        current_tool: Some(tool("Bash", "gh pr list --state merged", 4)),
-        activity: Some("Listing merged pull requests".into()),
-        tokens_used: Some(48_000),
-        model: Some("claude-haiku-5-5".into()),
-        effort: None,
-        last_active: ago(4),
-    }];
+    notes.subagents = vec![
+        SubAgent {
+            description: "Collect the merged pull requests".into(),
+            kind: Some("general-purpose".into()),
+            current_tool: Some(tool("Bash", "gh pr list --state merged", 4)),
+            activity: Some("Listing merged pull requests".into()),
+            tokens_used: Some(48_000),
+            model: Some("claude-haiku-5-5".into()),
+            effort: None,
+            last_active: ago(4),
+            level: 0,
+        },
+        // Started by the agent above.
+        SubAgent {
+            description: "Sort the changes by area".into(),
+            kind: Some("fork".into()),
+            current_tool: Some(tool("Read", "CHANGELOG.md", 2)),
+            activity: Some("Reading CHANGELOG.md".into()),
+            tokens_used: Some(21_000),
+            model: Some("claude-haiku-5-5".into()),
+            effort: None,
+            last_active: ago(2),
+            level: 1,
+        },
+    ];
 
     let mut docs = session(
         Agent::OpenCode,

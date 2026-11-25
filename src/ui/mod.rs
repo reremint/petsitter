@@ -294,6 +294,7 @@ mod tests {
             model: Some("claude-haiku-5-5".into()),
             effort: None,
             last_active: now,
+            level: 0,
         }];
         Snapshot {
             sessions: vec![session],
@@ -319,49 +320,58 @@ mod tests {
         }
     }
 
+    /// The app with `snapshot` loaded and its first session selected, so the
+    /// details panel shows.
+    fn app_on(snapshot: crate::monitor::Snapshot, mode: crate::app::ViewMode) -> crate::app::App {
+        let mut app = crate::app::App::new(
+            std::path::PathBuf::from("/lab"),
+            std::time::Duration::from_secs(600),
+            Theme::plain(),
+            mode,
+        );
+        app.load_snapshot(snapshot);
+        app.cursor = Some(crate::tree::RowKey::Session(crate::view::key(
+            &app.snapshot.sessions[0],
+        )));
+        app
+    }
+
+    /// The screen as text, one line per row.
+    fn draw(app: &crate::app::App, width: u16, height: u16) -> String {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| render(app, frame)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .chunks(usize::from(width))
+            .map(|row| {
+                row.iter()
+                    .map(ratatui::buffer::Cell::symbol)
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+                    + "\n"
+            })
+            .collect()
+    }
+
     /// Renders both layouts on a wide and a narrow screen with synthetic data:
     /// nothing may panic, and the System section must show its three boxes.
     /// Run with `--nocapture` to look at the result.
     #[test]
     fn renders_both_layouts_at_several_sizes() {
-        use ratatui::Terminal;
-        use ratatui::backend::TestBackend;
-
-        use crate::app::{App, ViewMode};
-        use std::path::PathBuf;
-        use std::time::Duration;
+        use crate::app::ViewMode;
 
         let snapshot = sample_snapshot();
 
         for mode in [ViewMode::Tree, ViewMode::Flat] {
             for (width, height) in [(180, 60), (70, 40)] {
-                let mut app = App::new(
-                    PathBuf::from("/lab"),
-                    Duration::from_secs(600),
-                    Theme::plain(),
-                    mode,
-                );
-                app.load_snapshot(snapshot.clone());
-                // Select the session, so the details panel shows.
-                app.cursor = Some(crate::tree::RowKey::Session(crate::view::key(
-                    &app.snapshot.sessions[0],
-                )));
-                let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-                terminal.draw(|frame| render(&app, frame)).unwrap();
-                let screen: String = terminal
-                    .backend()
-                    .buffer()
-                    .content()
-                    .chunks(usize::from(width))
-                    .map(|row| {
-                        row.iter()
-                            .map(ratatui::buffer::Cell::symbol)
-                            .collect::<String>()
-                            .trim_end()
-                            .to_owned()
-                            + "\n"
-                    })
-                    .collect();
+                let app = app_on(snapshot.clone(), mode);
+                let screen = draw(&app, width, height);
                 println!("--- {mode:?} {width}x{height}\n{screen}");
                 assert!(screen.contains("fix-parser"));
                 if mode == ViewMode::Tree {
@@ -379,6 +389,41 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A sub-agent started by another one is indented under it, in the tree
+    /// and in the details panel.
+    #[test]
+    fn nests_subagents_under_their_parent() {
+        let mut snapshot = sample_snapshot();
+        let parent = snapshot.sessions[0].subagents[0].clone();
+        let child = |kind: &str, level| crate::model::SubAgent {
+            kind: Some(kind.into()),
+            model: None,
+            level,
+            ..parent.clone()
+        };
+        snapshot.sessions[0]
+            .subagents
+            .extend([child("fork", 1), child("claude", 2)]);
+        let app = app_on(snapshot, crate::app::ViewMode::Tree);
+        let screen = draw(&app, 180, 80);
+        println!("{screen}");
+        // The column where `text` starts, on the line holding it.
+        let column = |text: &str| {
+            screen
+                .lines()
+                .find_map(|line| Some(line[..line.find(text)?].width()))
+                .unwrap_or_else(|| panic!("{text:?} not on screen"))
+        };
+
+        let tree = column("└─ Explore");
+        assert_eq!(column("└─ fork"), tree + 3);
+        assert_eq!(column("└─ claude"), tree + 6);
+
+        let details = column("● Explore");
+        assert_eq!(column("└ ● fork"), details);
+        assert_eq!(column("└ ● claude"), details + 2);
     }
 
     #[test]

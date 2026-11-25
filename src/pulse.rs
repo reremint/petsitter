@@ -188,6 +188,7 @@ mod tests {
             model: None,
             effort: None,
             last_active: now,
+            level: 0,
         }];
         quiet.observe(&session, now);
         assert!(quiet.buckets(now, 5)[4] > 0.0);

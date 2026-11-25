@@ -843,17 +843,17 @@ fn worktree_branch(session: &Session) -> Option<String> {
 /// Sub-agents listed under a session.
 const SHOWN_SUBAGENTS: usize = 3;
 
-/// Running sub-agents of a session (left parts of lines), one level deeper.
 /// Tokens processed, flush right at the very end of a line: `1.9M`.
 fn tokens_span(app: &App, tokens: Option<u64>) -> Span<'static> {
     let text = tokens.map(format::tokens).unwrap_or_default();
     Span::styled(format!("  {text:>TOKENS_WIDTH$} "), app.theme.muted())
 }
 
-/// The sub-agents of a session, one per line: the text on the left, and
-/// the tokens it used on the right.
+/// A sub-agent's line: the text on the left, and the tokens it used on the
+/// right.
 type SubAgentLine = (Vec<Span<'static>>, Vec<Span<'static>>);
 
+/// Running sub-agents of a session, one per line, one level deeper than it.
 fn subagent_lines(app: &App, session: &Session, depth: usize) -> Vec<SubAgentLine> {
     let t = app.theme;
     // The parent's guides, then plain indentation: no bar runs down the
@@ -870,6 +870,8 @@ fn subagent_lines(app: &App, session: &Session, depth: usize) -> Vec<SubAgentLin
         // `└─ Explore - Reading lexer.rs`: the agent type as Claude Code
         // records it, then what it is doing now.
         let mut spans = lead();
+        // One started by another sub-agent sits under that one's type.
+        spans.push(Span::raw("   ".repeat(agent.level)));
         spans.push(Span::styled("└─ ", t.muted()));
         spans.push(Span::styled(
             agent.kind.clone().unwrap_or_else(|| "agent".to_owned()),

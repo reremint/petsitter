@@ -111,44 +111,62 @@ impl ClaudeCollector {
             .find(|p| p.is_file())
     }
 
-    /// Sub-agents of a session that have not finished yet.
+    /// Sub-agents of a session that have not finished yet, each right after
+    /// the sub-agent that started it (see [`nest`]).
     ///
     /// Claude Code keeps them next to the session transcript, in
     /// `<session id>/subagents/agent-<id>.jsonl`, each with a `.meta.json`
-    /// holding its description and a `finished` flag.
+    /// holding its description, a `finished` flag and, for one started by
+    /// another sub-agent, that agent's id as `parentAgentId`.
     fn running_subagents(&mut self, transcript: &Path, now: SystemTime) -> Vec<SubAgent> {
-        /// A sub-agent silent for this long is assumed gone (crash, kill).
+        /// A sub-agent silent for this long is assumed gone (crash, kill),
+        /// unless one it started is still at work.
         const STALE: Duration = Duration::from_mins(15);
         let dir = transcript.with_extension("").join("subagents");
         let Ok(entries) = fs::read_dir(&dir) else {
             return Vec::new();
         };
-        let metas: Vec<PathBuf> = entries
+        let candidates: Vec<Candidate> = entries
             .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.to_string_lossy().ends_with(".meta.json"))
+            .filter_map(|e| {
+                let meta_path = e.path();
+                let name = meta_path.file_name()?.to_str()?;
+                let stem = name.strip_suffix(".meta.json")?;
+                let id = stem.strip_prefix("agent-").unwrap_or(stem).to_owned();
+                let meta: Value = serde_json::from_slice(&fs::read(&meta_path).ok()?).ok()?;
+                if meta["finished"].as_bool() == Some(true) {
+                    return None;
+                }
+                let log = meta_path.with_file_name(format!("{stem}.jsonl"));
+                let mtime = modified(&log)?;
+                Some(Candidate {
+                    id,
+                    parent: meta["parentAgentId"].as_str().map(str::to_owned),
+                    stale: now.duration_since(mtime).is_ok_and(|age| age > STALE),
+                    log,
+                    mtime,
+                    meta,
+                })
+            })
             .collect();
 
+        // Transcripts are read only for the sub-agents that will be shown.
+        let kept = keep(&candidates);
         let mut agents = Vec::new();
-        for meta_path in metas {
-            let Some(meta) = fs::read(&meta_path)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-            else {
-                continue;
-            };
-            if meta["finished"].as_bool() == Some(true) {
+        for (candidate, kept) in candidates.into_iter().zip(kept) {
+            if !kept {
                 continue;
             }
-            let log = PathBuf::from(meta_path.to_string_lossy().replace(".meta.json", ".jsonl"));
-            let Some(mtime) = modified(&log) else {
-                continue;
-            };
-            if now.duration_since(mtime).is_ok_and(|age| age > STALE) {
-                continue;
-            }
+            let Candidate {
+                id,
+                parent,
+                log,
+                mtime,
+                meta,
+                ..
+            } = candidate;
             let summary = self.subagent_transcript(&log);
-            agents.push(SubAgent {
+            let agent = SubAgent {
                 description: meta["description"]
                     .as_str()
                     .unwrap_or("sub-agent")
@@ -161,10 +179,11 @@ impl ClaudeCollector {
                 model: summary.model.clone(),
                 effort: summary.effort.clone(),
                 last_active: summary.last_timestamp.unwrap_or(mtime).max(mtime),
-            });
+                level: 0,
+            };
+            agents.push(Nestable { id, parent, agent });
         }
-        agents.sort_by_key(|a| std::cmp::Reverse(a.last_active));
-        agents
+        nest(agents)
     }
 
     fn subagent_transcript(&mut self, path: &Path) -> &TranscriptSummary {
@@ -1012,6 +1031,135 @@ impl TranscriptSummary {
     }
 }
 
+/// An unfinished sub-agent found on disk, before its transcript is read.
+#[derive(Debug)]
+struct Candidate {
+    /// The `<id>` of `agent-<id>.jsonl`.
+    id: String,
+    /// The id of the sub-agent that started it; none when the session did.
+    parent: Option<String>,
+    log: PathBuf,
+    mtime: SystemTime,
+    /// Its log has been quiet for too long.
+    stale: bool,
+    meta: Value,
+}
+
+/// Which candidates to show, one flag each: every sub-agent still at work,
+/// and the quiet ones that started it, since a parent waiting on its
+/// sub-agent writes nothing.
+fn keep(candidates: &[Candidate]) -> Vec<bool> {
+    let index: HashMap<&str, usize> = candidates
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (c.id.as_str(), i))
+        .collect();
+    let mut kept = vec![false; candidates.len()];
+    for (i, candidate) in candidates.iter().enumerate() {
+        if candidate.stale {
+            continue;
+        }
+        // Up the chain of parents. An agent already kept has its parents
+        // kept too, which also ends a loop in a malformed chain.
+        let mut at = Some(i);
+        while let Some(j) = at.filter(|&j| !kept[j]) {
+            kept[j] = true;
+            at = candidates[j]
+                .parent
+                .as_deref()
+                .and_then(|parent| index.get(parent).copied());
+        }
+    }
+    kept
+}
+
+/// A sub-agent to show, with the ids that place it under its parent.
+#[derive(Debug)]
+struct Nestable {
+    id: String,
+    parent: Option<String>,
+    agent: SubAgent,
+}
+
+/// The sub-agents nested as in Claude Code's background view: each one
+/// right after the one that started it, a level deeper. One whose parent is
+/// not listed (finished or gone) is at level 0. Each one is listed once,
+/// even if the parent links loop.
+///
+/// Siblings come newest first, counting what the sub-agents they started
+/// did: a parent waiting on its own writes nothing, and must not sink below
+/// quieter agents, where the dashboard would leave its busy branch out.
+fn nest(agents: Vec<Nestable>) -> Vec<SubAgent> {
+    // Each one's latest activity, or that of any sub-agent below it.
+    let mut latest: Vec<SystemTime> = agents.iter().map(|a| a.agent.last_active).collect();
+    {
+        let index: HashMap<&str, usize> = agents
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.id.as_str(), i))
+            .collect();
+        for i in 0..agents.len() {
+            let time = latest[i];
+            // Up the parents, as long as this one is newer: that also ends
+            // a loop, once it went round.
+            let mut at = i;
+            while let Some(&parent) = agents[at].parent.as_deref().and_then(|p| index.get(p)) {
+                if latest[parent] >= time {
+                    break;
+                }
+                latest[parent] = time;
+                at = parent;
+            }
+        }
+    }
+    let mut agents: Vec<(SystemTime, Nestable)> = latest.into_iter().zip(agents).collect();
+    // The id breaks ties: directory order is not stable.
+    agents.sort_by(|(a_time, a), (b_time, b)| b_time.cmp(a_time).then_with(|| a.id.cmp(&b.id)));
+    let agents: Vec<Nestable> = agents.into_iter().map(|(_, a)| a).collect();
+    let mut children = vec![Vec::new(); agents.len()];
+    let mut roots = Vec::new();
+    {
+        let index: HashMap<&str, usize> = agents
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (a.id.as_str(), i))
+            .collect();
+        for (i, agent) in agents.iter().enumerate() {
+            match agent.parent.as_deref().and_then(|p| index.get(p)) {
+                Some(&parent) => children[parent].push(i),
+                None => roots.push(i),
+            }
+        }
+    }
+
+    // Depth first from each root, then from whatever a loop of parents
+    // left out, newest first.
+    let mut order = Vec::with_capacity(agents.len());
+    let mut visited = vec![false; agents.len()];
+    let mut stack = Vec::new();
+    for start in roots.into_iter().chain(0..agents.len()) {
+        stack.push((start, 0));
+        while let Some((i, level)) = stack.pop() {
+            if std::mem::replace(&mut visited[i], true) {
+                continue;
+            }
+            order.push((i, level));
+            // Reversed, so that the newest child comes out first.
+            stack.extend(children[i].iter().rev().map(|&child| (child, level + 1)));
+        }
+    }
+
+    let mut slots: Vec<Option<SubAgent>> = agents.into_iter().map(|a| Some(a.agent)).collect();
+    order
+        .into_iter()
+        .filter_map(|(i, level)| {
+            let mut agent = slots[i].take()?;
+            agent.level = level;
+            Some(agent)
+        })
+        .collect()
+}
+
 fn content_blocks(message: &Value) -> impl Iterator<Item = &Value> {
     message
         .get("content")
@@ -1189,11 +1337,7 @@ mod tests {
 
     #[test]
     fn lists_running_subagents() {
-        let dir = tempfile::tempdir().unwrap();
-        let transcript = dir.path().join("session.jsonl");
-        std::fs::write(&transcript, "").unwrap();
-        let agents = dir.path().join("session").join("subagents");
-        std::fs::create_dir_all(&agents).unwrap();
+        let (_dir, mut collector, transcript, agents) = subagent_home();
         std::fs::write(
             agents.join("agent-a.meta.json"),
             r#"{"agentType":"general-purpose","description":"Find the colors"}"#,
@@ -1213,11 +1357,6 @@ mod tests {
         .unwrap();
         std::fs::write(agents.join("agent-b.jsonl"), "").unwrap();
 
-        let mut collector = ClaudeCollector::new(
-            dir.path().to_path_buf(),
-            dir.path().join("config.json"),
-            dir.path().join("relay.json"),
-        );
         let running = collector.running_subagents(&transcript, SystemTime::now());
         assert_eq!(running.len(), 1);
         assert_eq!(running[0].description, "Find the colors");
@@ -1227,6 +1366,171 @@ mod tests {
             (tool.name.as_str(), tool.detail.as_str()),
             ("WebFetch", "https://example.com")
         );
+    }
+
+    /// Writes sub-agent `id` to `dir`: started by `parent` (by the session
+    /// when none), its log last written `age` before `now`.
+    fn write_subagent(
+        dir: &Path,
+        id: &str,
+        parent: Option<&str>,
+        finished: bool,
+        now: SystemTime,
+        age: Duration,
+    ) {
+        let mut meta = serde_json::json!({"agentType": "fork", "description": id});
+        if let Some(parent) = parent {
+            meta["parentAgentId"] = parent.into();
+        }
+        if finished {
+            meta["finished"] = true.into();
+        }
+        std::fs::write(dir.join(format!("agent-{id}.meta.json")), meta.to_string()).unwrap();
+        std::fs::File::create(dir.join(format!("agent-{id}.jsonl")))
+            .unwrap()
+            .set_modified(now - age)
+            .unwrap();
+    }
+
+    /// A collector on a session transcript in a temporary home, and the
+    /// folder its sub-agents go in.
+    fn subagent_home() -> (tempfile::TempDir, ClaudeCollector, PathBuf, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript = dir.path().join("session.jsonl");
+        std::fs::write(&transcript, "").unwrap();
+        let agents = dir.path().join("session").join("subagents");
+        std::fs::create_dir_all(&agents).unwrap();
+        let collector = ClaudeCollector::new(
+            dir.path().to_path_buf(),
+            dir.path().join("config.json"),
+            dir.path().join("relay.json"),
+        );
+        (dir, collector, transcript, agents)
+    }
+
+    /// Description (here, the id) and level of each sub-agent, in order.
+    fn levels(agents: &[SubAgent]) -> Vec<(&str, usize)> {
+        agents
+            .iter()
+            .map(|a| (a.description.as_str(), a.level))
+            .collect()
+    }
+
+    #[test]
+    fn nests_subagents_under_their_parent() {
+        let (_dir, mut collector, transcript, agents) = subagent_home();
+        let now = SystemTime::now();
+        let secs = Duration::from_secs;
+        // Children work while their parent waits, so they are newer than it.
+        for (id, parent, finished, age) in [
+            ("c2", Some("p"), false, 1),
+            ("g", Some("c2"), false, 2),
+            ("p", None, false, 3),
+            ("c1", Some("p"), false, 4),
+            ("o", Some("gone"), false, 5),
+            ("gone", None, true, 6),
+            ("s", None, false, 7),
+        ] {
+            write_subagent(&agents, id, parent, finished, now, secs(age));
+        }
+        let running = collector.running_subagents(&transcript, now);
+        assert_eq!(
+            levels(&running),
+            [("p", 0), ("c2", 1), ("g", 2), ("c1", 1), ("o", 0), ("s", 0)]
+        );
+    }
+
+    #[test]
+    fn a_busy_branch_comes_first() {
+        let (_dir, mut collector, transcript, agents) = subagent_home();
+        let now = SystemTime::now();
+        let mins = Duration::from_mins;
+        // `p` waits on `c`, the only one at work: they are not left below
+        // the quieter roots, where the dashboard would cut them.
+        for (id, parent, age) in [
+            ("c", Some("p"), Duration::from_secs(1)),
+            ("s1", None, mins(1)),
+            ("s2", None, mins(2)),
+            ("s3", None, mins(3)),
+            ("p", None, mins(20)),
+        ] {
+            write_subagent(&agents, id, parent, false, now, age);
+        }
+        let running = collector.running_subagents(&transcript, now);
+        assert_eq!(
+            levels(&running),
+            [("p", 0), ("c", 1), ("s1", 0), ("s2", 0), ("s3", 0)]
+        );
+    }
+
+    #[test]
+    fn keeps_a_quiet_parent_while_a_child_works() {
+        let (_dir, mut collector, transcript, agents) = subagent_home();
+        let now = SystemTime::now();
+        let quiet = Duration::from_mins(20);
+        write_subagent(&agents, "p", None, false, now, quiet);
+        write_subagent(&agents, "c", Some("p"), false, now, Duration::from_secs(1));
+        write_subagent(&agents, "lone", None, false, now, quiet);
+
+        let running = collector.running_subagents(&transcript, now);
+        assert_eq!(levels(&running), [("p", 0), ("c", 1)]);
+        assert!(
+            !collector
+                .transcripts
+                .contains_key(&agents.join("agent-lone.jsonl")),
+            "a sub-agent that is not shown is not read"
+        );
+    }
+
+    fn candidate(id: &str, parent: Option<&str>, stale: bool) -> Candidate {
+        Candidate {
+            id: id.to_owned(),
+            parent: parent.map(str::to_owned),
+            log: PathBuf::new(),
+            mtime: SystemTime::UNIX_EPOCH,
+            stale,
+            meta: Value::Null,
+        }
+    }
+
+    #[test]
+    fn keep_survives_a_parent_loop() {
+        let looped = || {
+            vec![
+                candidate("a", Some("b"), true),
+                candidate("b", Some("a"), true),
+            ]
+        };
+        assert_eq!(keep(&looped()), [false, false], "nothing at work");
+        let mut working = looped();
+        working.push(candidate("f", Some("a"), false));
+        assert_eq!(keep(&working), [true, true, true]);
+    }
+
+    #[test]
+    fn nest_survives_a_parent_loop() {
+        let now = SystemTime::now();
+        let nestable = |id: &str, parent: &str, age| Nestable {
+            id: id.to_owned(),
+            parent: Some(parent.to_owned()),
+            agent: SubAgent {
+                description: id.to_owned(),
+                kind: None,
+                current_tool: None,
+                activity: None,
+                tokens_used: None,
+                model: None,
+                effort: None,
+                last_active: now - Duration::from_secs(age),
+                level: 0,
+            },
+        };
+        let nested = nest(vec![
+            nestable("a", "b", 1),
+            nestable("b", "a", 2),
+            nestable("x", "x", 3),
+        ]);
+        assert_eq!(levels(&nested), [("a", 0), ("b", 1), ("x", 0)]);
     }
 
     #[test]
