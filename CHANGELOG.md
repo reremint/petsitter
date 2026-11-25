@@ -16,6 +16,9 @@ All notable changes to this project are documented here. The format follows
 
 - Sub-agents started by another sub-agent are now nested under it, as in
   Claude Code's background view.
+- Enter on a Claude Code background session no longer jumps to the pane it
+  was started from, or to an unrelated pane once the terminal showing it was
+  closed.
 
 ## [0.1.0]
 
