@@ -1,0 +1,11 @@
+name: Feature request
+description: An idea to make petsitter more useful
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What would you like to see
+      description: The situation you are in, and what would help. Mockups welcome.
+    validations:
+      required: true

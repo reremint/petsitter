@@ -1,0 +1,64 @@
+# Contributing to petsitter
+
+Thanks for helping! Bug reports, ideas and pull requests are all welcome.
+
+## Reporting a bug
+
+[Open an issue](https://github.com/reremint/petsitter/issues/new/choose) with
+what you did, what you saw, and the output of `petsitter --version` and
+`petsitter doctor`. Agents change their on-disk formats often: if a session is
+missing or wrong, say which agent and which version.
+
+Please never paste real transcripts or session files: they hold your prompts
+and code. A few redacted lines showing the record that confuses petsitter are
+plenty.
+
+## Working on the code
+
+You need Rust 1.95 or newer ([rustup](https://rustup.rs)).
+
+```sh
+git clone https://github.com/reremint/petsitter
+cd petsitter
+cargo run -- ~/code        # watch a folder of your choice
+```
+
+Before opening a pull request, make sure these pass (CI runs them too):
+
+```sh
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+To try the interface without any agent running, use made-up sessions:
+`cargo run -- --demo`. The README's screenshot is that demo, made with
+`python3 scripts/screenshot.py` (needs Chrome and the Fira Code font), and
+`docs/demo.gif` is recorded from it with [vhs](https://github.com/charmbracelet/vhs):
+see the steps at the top of `scripts/demo.tape`.
+
+### Where things are
+
+| Path | What |
+| --- | --- |
+| `src/collectors/` | One reader per agent: turns its files and processes into sessions |
+| `src/monitor.rs` | Collects a snapshot on a background thread, woken by file changes |
+| `src/tree.rs`, `src/view.rs` | How sessions are grouped, ordered and filtered |
+| `src/app.rs` | State, keys and mouse |
+| `src/ui/` | Rendering ([ratatui](https://ratatui.rs)) |
+| `src/git.rs` | Repository details for a folder's panel |
+| `tests/fixtures/` | Synthetic agent files used by the tests |
+
+### Guidelines
+
+- **Read-only.** petsitter must never write to an agent's files, and must not
+  send anything off the machine.
+- **Never block the UI thread.** Slow work (reading big files, running `git`)
+  goes to a background thread.
+- **Synthetic fixtures only.** When an agent's format changes, add a fixture
+  that reproduces it, with made-up content.
+- Keep commits focused, and describe the *why* in the message.
+
+## Code of conduct
+
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Be kind.

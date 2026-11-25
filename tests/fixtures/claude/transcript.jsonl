@@ -1,0 +1,8 @@
+{"type":"custom-title","customTitle":"fix-parser","sessionId":"00000000-0000-4000-8000-000000000001"}
+{"type":"ai-title","aiTitle":"Parser regression test","sessionId":"00000000-0000-4000-8000-000000000001"}
+{"type":"user","isSidechain":false,"cwd":"/home/dev/lab/demo","gitBranch":"main","timestamp":"2026-01-01T10:00:00.000Z","message":{"role":"user","content":"Add a regression test for the parser\nand keep it small"}}
+{"type":"last-prompt","lastPrompt":"Add a regression test for the parser","sessionId":"00000000-0000-4000-8000-000000000001"}
+{"type":"assistant","isSidechain":false,"cwd":"/home/dev/lab/demo","timestamp":"2026-01-01T10:00:05.000Z","message":{"id":"msg_1","model":"claude-opus-5-5","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/home/dev/lab/demo/src/parser.rs"}}],"usage":{"input_tokens":1000,"cache_read_input_tokens":20000,"cache_creation_input_tokens":0,"output_tokens":50}}}
+{"type":"user","isSidechain":false,"cwd":"/home/dev/lab/demo","timestamp":"2026-01-01T10:00:06.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"fn parse() {}"}]}}
+{"type":"api-request","sessionId":"00000000-0000-4000-8000-000000000001","timestamp":"2026-01-01T10:00:06.500Z"}
+{"type":"assistant","isSidechain":false,"effort":"high","cwd":"/home/dev/lab/demo","timestamp":"2026-01-01T10:00:09.000Z","message":{"id":"msg_2","model":"claude-opus-5-5","content":[{"type":"thinking","thinking":""},{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"cargo test --release","description":"Run tests"}}],"usage":{"input_tokens":1200,"cache_read_input_tokens":30000,"cache_creation_input_tokens":500,"output_tokens":80}}}

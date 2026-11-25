@@ -1,0 +1,22 @@
+# Changelog
+
+All notable changes to this project are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
+[Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0]
+
+First release.
+
+- Live view of every Claude Code, Codex and opencode session under a folder,
+  in a tree of their folders, with their state, model, effort, context,
+  tokens, background shells and sub-agents.
+- Machine load and each account's quotas at the top.
+- Details panel for a session, or for a git folder: the branches its sessions
+  work on, and any commit's files and diff.
+- Optional hooks for fresher Claude quotas and Codex approval prompts.
+
+[Unreleased]: https://github.com/reremint/petsitter/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/reremint/petsitter/releases/tag/v0.1.0

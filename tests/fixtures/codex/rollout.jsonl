@@ -1,0 +1,12 @@
+{"timestamp":"2026-01-01T10:00:00.000Z","type":"session_meta","payload":{"id":"00000000-0000-4000-8000-0000000000c0","timestamp":"2026-01-01T10:00:00.000Z","cwd":"/home/dev/lab/demo","originator":"codex_cli_rs","cli_version":"0.172.0","git":{"branch":"main","commit_hash":"0000000"}}}
+{"timestamp":"2026-01-01T10:00:01.000Z","type":"turn_context","payload":{"cwd":"/home/dev/lab/demo","model":"gpt-5.5-codex","approval_policy":"on-request"}}
+{"timestamp":"2026-01-01T10:00:01.500Z","type":"event_msg","payload":{"type":"user_message","message":"Explain the build script\n"}}
+{"timestamp":"2026-01-01T10:00:01.600Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","id":"u1","content":[{"type":"text","text":"List the examples directory","text_elements":[]}]}}}
+{"timestamp":"2026-01-01T10:00:02.000Z","type":"event_msg","payload":{"type":"task_started","model_context_window":272000}}
+{"timestamp":"2026-01-01T10:00:04.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"cat build.rs\"]}","call_id":"call_1"}}
+{"timestamp":"2026-01-01T10:00:05.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"fn main() {}"}}
+{"timestamp":"2026-01-01T10:00:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":12000,"cached_input_tokens":8000,"output_tokens":300},"total_token_usage":{"input_tokens":20000,"output_tokens":500},"model_context_window":258400},"rate_limits":{"limit_id":"codex","primary":{"used_percent":41.0,"window_minutes":300,"resets_at":1767272400},"secondary":{"used_percent":12.5,"window_minutes":10080,"resets_at":1767600000},"plan_type":"plus"}}}
+{"timestamp":"2026-01-01T10:00:08.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"cargo build\"]}","call_id":"call_2"}}
+{"timestamp":"2026-01-01T10:00:20.000Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"done"}}
+{"timestamp":"2026-01-01T10:00:30.000Z","type":"event_msg","payload":{"type":"task_started","model_context_window":258400}}
+{"timestamp":"2026-01-01T10:00:31.000Z","type":"response_item","payload":{"type":"custom_tool_call","status":"completed","call_id":"call_3","name":"exec","input":"const r = await tools.exec_command({cmd:\"cargo build\",yield_time_ms:10000});"}}

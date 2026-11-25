@@ -1,0 +1,51 @@
+[package]
+name = "petsitter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Walk all your AI coding agents on one leash: a live terminal view of every Claude Code, Codex and opencode session in a folder."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/reremint/petsitter"
+keywords = ["tui", "ai-agents", "claude-code", "codex", "opencode"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["src/**/*", "tests/**/*", "Cargo.toml", "Cargo.lock", "README.md", "CHANGELOG.md", "LICENSE"]
+
+[dependencies]
+base64 = "0.23"
+clap = { version = "4.6", features = ["derive"] }
+color-eyre = "0.6"
+dirs = "7"
+jiff = "1"
+notify = "9"
+ratatui = "0.30"
+rusqlite = { version = "0.43", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
+terminal-colorsaurus = "1"
+trash = "5.4.0"
+unicode-width = "0.2"
+ureq = { version = "3", default-features = false, features = ["json"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

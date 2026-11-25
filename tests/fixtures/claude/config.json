@@ -1,0 +1,17 @@
+{
+  "oauthAccount": { "accountUuid": "00000000-0000-4000-8000-0000000000aa", "planDisplayName": "Max" },
+  "cachedUsageUtilization": {
+    "fetchedAtMs": 1767261600000,
+    "accountUuid": "00000000-0000-4000-8000-0000000000aa",
+    "utilization": {
+      "five_hour": { "utilization": 12, "resets_at": "2026-01-01T13:00:00+00:00" },
+      "seven_day": { "utilization": 23, "resets_at": "2026-01-05T01:00:00+00:00" },
+      "limits": [
+        { "kind": "session", "group": "session", "percent": 12, "resets_at": "2026-01-01T13:00:00+00:00", "scope": null },
+        { "kind": "weekly_all", "group": "weekly", "percent": 23, "resets_at": "2026-01-05T01:00:00+00:00", "scope": null },
+        { "kind": "weekly_scoped", "group": "weekly", "percent": 38, "resets_at": "2026-01-05T01:00:00+00:00",
+          "scope": { "model": { "id": null, "display_name": "Opus" }, "surface": null } }
+      ]
+    }
+  }
+}
